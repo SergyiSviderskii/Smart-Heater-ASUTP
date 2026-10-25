@@ -1,0 +1,15 @@
+# Временные папки компиляции прошивок ESPHome
+.esphome/
+build/
+.pio/
+.pioenvs/
+
+# Секретные файлы паролей и токенов умного дома
+secrets.yaml
+!secrets.yaml
+.storage/
+*.log
+
+# Системный мусор операционных систем
+Thumbs.db
+.DS_Store
