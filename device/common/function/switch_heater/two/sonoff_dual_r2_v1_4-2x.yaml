@@ -1,0 +1,147 @@
+substitutions:
+  esp8266_board: esp01_1m
+  status_inverted: true
+  status_led: GPIO13
+  power: '"MEDIUM"'
+
+
+packages:
+  - !include ../../../../common/general/wifi_wpa2.yaml 
+  - !include ../../../../common/esp8266/board.yaml     
+  - !include ../../../../common/esp8266/sensor_vcc_esp.yaml
+
+
+script:
+  - id: script_switching
+    mode: single # Железный режим без прерываний!
+    then:
+    
+      - script.stop: script_thermostat_heater_idle
+      
+      - lambda: 'id(boot_switching_finished) = false;'    
+          
+      - text_sensor.template.publish:
+          id: text_sensor_device_status
+          state: "⚡Коммутация"     
+          
+      - switch.turn_on: switch_relay2 # Размыкаем силовой курок
+
+      - lambda: |-      
+          ESP_LOGE("main", "1 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+
+      - delay: 3000ms # Ждем гашения дуги контактов
+
+      - lambda: |-   
+
+          if (id(frh_mode) == "MEDIUM") {
+              id(switch_relay1).turn_on();
+              id(text_sensor_power_frh).publish_state("🟡 Средняя"); 
+          } 
+          else if (id(frh_mode) == "MAXIMUM") {
+              id(switch_relay1).turn_off();
+              id(text_sensor_power_frh).publish_state("🔥 Максимум");
+          } 
+          else if (id(frh_mode) == "OFF") {
+              id(switch_relay1).turn_off();
+              id(text_sensor_power_frh).publish_state("❌ Отключено");         
+          }        
+          
+          ESP_LOGE("main", "2 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());          
+          
+      - script.execute: script_delay_switching_on 
+                  
+  - id: script_delay_switching_on
+    mode: single    
+    then:
+      - delay: 3000ms    
+      - if:
+          condition: 
+            - lambda: 'return id(binary_sensor_thermostat_connected).state;'
+          then:        
+            - if:
+                condition: 
+                  - binary_sensor.is_on: thermostat_heater_idle
+                then: 
+                  - if:
+                      condition: 
+                        lambda: 'return id(frh_mode) != "OFF";'
+                      then:                       
+                        - text_sensor.template.publish:
+                            id: text_sensor_device_status
+                            state: "🔥 Набор Мощности" 
+                        - switch.turn_off: switch_relay2                
+                        - if:
+                            condition: 
+                              - lambda: 'return id(frh_mode) == "MAXIMUM";'
+                            then:      
+                              - binary_sensor.template.publish:
+                                  id: thermostat_heater_idle
+                                  state: OFF  
+                            else:                              
+                              - script.execute: script_thermostat_heater_idle 
+                else: 
+                  - text_sensor.template.publish:
+                      id: text_sensor_device_status
+                      state: "⏳Ожидание"                           
+          else:         
+            - text_sensor.template.publish:
+                id: text_sensor_device_status
+                state: "🌡Автономный Нагрев"   
+            - switch.turn_off: switch_relay2  
+            - if:
+                condition: 
+                  - binary_sensor.is_on: thermostat_heater_idle
+                then:      
+                  - binary_sensor.template.publish:
+                      id: thermostat_heater_idle
+                      state: OFF  
+                      
+      - script.execute: script_boot_switching_finished             
+
+      - lambda: |-          
+          ESP_LOGE("main", "3 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+          
+  - id: script_thermostat_heater_idle  
+    mode: single     
+    then:
+      - delay: 60000ms   
+      
+      - lambda: |- 
+          ESP_LOGE("main", "60000ms Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+
+      - lambda: |-  
+
+          if (id(frh_mode) == "MEDIUM") {
+            id(frh_mode) = "MAXIMUM";
+          } 
+          
+      - script.execute: script_switching 
+
+
+binary_sensor:
+  # включение/выключение реле на устройстве 
+  - platform: gpio
+    id: button_gpio10
+    pin:
+      number: GPIO10
+      mode: INPUT_PULLUP
+      inverted: true
+    internal: true 
+    filters:  
+      delayed_on_off: 300ms     
+    on_release:
+      then:   
+        - switch.turn_on: restarting          
+    
+    
+switch:
+  # индикация (LED) включения/выключение реле на устройстве  
+  - platform: gpio
+    id: switch_relay1
+    pin: GPIO12
+    restore_mode: ALWAYS_OFF  
+  
+  - platform: gpio
+    id: switch_relay2 
+    pin: GPIO5 
+    restore_mode: ALWAYS_ON   

@@ -1,0 +1,48 @@
+- id: ''
+  alias: "Система: Пошаговый запуск автоматик после старта HA"
+  description: "Плавный поочередный вызов исполнительных систем с разбивкой по времени"
+  triggers:
+  - trigger: homeassistant
+    event: start
+    
+  condition: []
+  
+  action:
+      
+  # 1. Ждем 1,5 минуты и запускаем ОТОПЛЕНИЕ
+  - delay: "00:01:30"
+
+  - action: automation.trigger
+    target:
+      entity_id: automation.upravlenie_otopleniem_dom_termostaty
+    data:
+      skip_condition: true     
+      
+  # 2. Ждем еще 1,5 минуты (итого 3 мин от старта) и запускаем ВОДУ 
+  - delay: "00:01:30"
+
+  - action: automation.trigger
+    target:
+      entity_id: automation.vkliuchenie_vykliuchenie_vozvrat_sostoianiia_aktivatsii_prisutstviia_v_dome_zapornoi_armatury
+    data:
+      skip_condition: true 
+      
+  # 3. Ждем еще 2 минуты (итого 5 мин от старта) и запускаем РОЗЕТКИ
+  - delay: "00:02:00"
+
+  - action: automation.trigger
+    target:
+      entity_id: automation.vkliuchenie_vykliuchenie_vozvrat_sostoianiia_aktivatsii_prisutstviia_v_dome_rozetok_monitorov_potrebleniia
+    data:
+      skip_condition: true     
+
+  # 4. Ждем еще 1 минуты (итого 6 мин от старта) и запускаем ОСВЕЩЕНИЕ
+  - delay: "00:02:00"
+
+  - action: automation.trigger
+    target:
+      entity_id: automation.vkliuchenie_vykliuchenie_vozvrat_sostoianiia_aktivatsii_prisutstviia_osveshcheniia 
+    data:
+      skip_condition: true  
+
+  mode: single   

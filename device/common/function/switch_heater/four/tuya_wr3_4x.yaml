@@ -1,0 +1,18 @@
+# switch 4x tuya wr3
+substitutions:
+  number_binary_sensor_1: "GPIO5"
+  number_binary_sensor_2: "GPIO29"
+  number_binary_sensor_3: "GPIO12"
+  number_binary_sensor_4: "GPIO18"
+  number_switch_1: "GPIO0"
+  number_switch_2: "GPIO15"
+  number_switch_3: "GPIO14"
+  number_switch_4: "GPIO19"  
+  power: "MINIMUM"
+  status_inverted: true
+  status_led: GPIO22
+ 
+ 
+rtl87xx:
+  board: wr3
+  

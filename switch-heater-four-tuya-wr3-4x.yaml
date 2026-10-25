@@ -1,0 +1,11 @@
+# switch 4x tuya wr3
+substitutions:
+  hostname: "switch-heater-four-tuya-wr3-4x"
+  password_ota: ""
+  installation_area: "дом -"
+
+  
+packages:  
+  - !include device/common/function/switch_heater/four/tuya_wr3_4x.yaml 
+  - !include device/common/function/switch_heater/four/general.yaml  
+  - !include device/switch_heater/general.yaml 

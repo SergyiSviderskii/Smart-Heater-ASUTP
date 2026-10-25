@@ -1,0 +1,14 @@
+substitutions:
+  restore_from_flash: true
+  status_led: GPIO13
+  status_inverted: true   
+  # Важнейший параметр! По умолчанию сущность status для HA создается:
+  internal_light_mode: false 
+  update_interval: "2s"
+  reboot_timeout: "15min"
+
+packages:
+  - !include ../../../../common/general/only_time.yaml  
+  - !include ../../../../common/esp8266/sensor_vcc_esp.yaml
+  - !include ../../../../common/esp8266/board.yaml
+  - !include ../../../../common/function/monitors_sockets/general.yaml

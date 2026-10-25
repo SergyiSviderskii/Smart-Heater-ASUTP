@@ -1,0 +1,86 @@
+globals:
+  - id: my_global_on_off
+    type: uint8_t
+    restore_value: true  
+
+
+binary_sensor:
+  - platform: template
+    id: flag_current_max 
+    
+  - platform: template
+    id: flag_script_start_relay_on    
+    
+  - platform: template
+    id: flag_no_activation      
+    
+
+script:     
+  - id: script_power
+    mode: restart
+    then:
+      - delay: 5000ms
+      - if:
+          condition:
+            - binary_sensor.is_on: flag_script_start_relay_on
+          then:   
+            - lambda: |-
+                if (id(my_global_on_off) != id(relay).state) {
+                  id(my_global_on_off) = id(relay).state;     
+                }     
+                
+  - id: script_timer_off 
+    parameters:
+      delay_ms: int
+    then:
+      - delay: !lambda return delay_ms;      
+      - switch.turn_off: relay
+
+  - id: script_start_relay_on
+    then:
+      - delay: $timer_start 
+      - binary_sensor.template.publish:
+          id: flag_script_start_relay_on
+          state: ON
+      - delay: 100ms
+      - if:
+          condition:
+            - lambda: return id(my_global_on_off);
+          then:
+            - switch.turn_on:
+                id: relay   
+          
+  - id: script_delay_current_max
+    then:
+      - delay: 3000ms                     
+      - if:
+          condition: 
+            - lambda: |-
+                return id(current).state >= $current_max; 
+          then: 
+            - binary_sensor.template.publish:
+                id: flag_current_max
+                state: ON            
+            - switch.turn_off: relay
+            - script.execute:
+                id: service_ha
+                title_data: $friendly_name                       
+                message_data: |-
+                       🚨 
+                       🏙 Зона: $installation_area
+                       ⚠️ Критическое превышение тока    
+                
+  - id: script_alarm_current_max   
+    then:
+      - switch.turn_off: relay 
+      - script.execute:
+          id: service_ha
+          title_data: $friendly_name                       
+          message_data: |-
+                   🚨 
+                   🏙 Зона: $installation_area
+                   🛠️ Было превышение тока        
+                   🔄 Необходим сброс    
+          
+          
+          

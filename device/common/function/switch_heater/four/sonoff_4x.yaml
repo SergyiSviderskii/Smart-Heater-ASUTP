@@ -1,0 +1,19 @@
+substitutions:
+  number_binary_sensor_1: "GPIO0"
+  number_binary_sensor_2: "GPIO9"
+  number_binary_sensor_3: "GPIO10"
+  number_binary_sensor_4: "GPIO14"
+  number_switch_1: "GPIO12"
+  number_switch_2: "GPIO5"
+  number_switch_3: "GPIO4"
+  number_switch_4: "GPIO15" 
+  power: "MINIMUM"
+  esp8266_board: esp01_1m
+  status_inverted: true
+  status_led: GPIO13
+  
+ 
+packages:  
+  - !include ../../../../common/general/wifi_wpa2.yaml 
+  - !include ../../../../common/esp8266/board.yaml     
+  - !include ../../../../common/esp8266/sensor_vcc_esp.yaml  

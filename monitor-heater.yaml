@@ -1,0 +1,12 @@
+substitutions:
+  hostname: "monitor-heater"
+  password_ota: ""
+  installation_area: "дом "
+  current_max: "8"
+  timer_start: "30000ms"
+  
+
+packages:
+  - !include device/common/function/monitors_sockets/esp8266/sonoff_pow_r2.yaml 
+  - !include device/common/function/monitors_sockets/esp8266/general.yaml
+  - !include device/monitors_sockets/general.yaml 

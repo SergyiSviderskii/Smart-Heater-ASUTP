@@ -1,0 +1,80 @@
+- id: ''
+  alias: Отслеживания iPhone пользователей
+  description: >-
+    Автоматизация отслеживания пользователей (person) 
+
+  triggers:
+  
+    - trigger: zone.entered
+      target:
+        entity_id:
+          - person.1
+          - person.1
+      options:
+        zone: zone.zona_aktivatsii_otopleniia
+        for:
+          hours: 0
+          minutes: 5
+          seconds: 0
+        behavior: first
+      id: zona_aktivatsii_otopleniia_first
+      
+    - trigger: zone.entered
+      target:
+        entity_id:
+          - person.1
+          - person.2
+      options:
+        zone: zone.home
+        for:
+          hours: 0
+          minutes: 1
+          seconds: 0
+        behavior: first
+      id: zone_home_first      
+
+    - trigger: zone.left
+      target:
+        entity_id:
+          - person.1
+          - person.2
+      options:
+        zone: zone.zona_aktivatsii_otopleniia
+        for:
+          hours: 0
+          minutes: 5
+          seconds: 0
+        behavior: each
+      id: zona_aktivatsii_otopleniia_each
+
+  conditions: []
+  
+  actions:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: zone_home_first
+          sequence:
+          
+            - action: input_boolean.turn_on
+              target:
+                entity_id:
+                  - input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia
+
+        - conditions:
+            - condition: trigger
+              id: zona_aktivatsii_otopleniia_first
+          sequence:
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia
+        - conditions:
+            - condition: trigger
+              id: zona_aktivatsii_otopleniia_each
+          sequence:
+            - action: input_boolean.turn_off
+               target:
+                 entity_id:
+                      - input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia
+
+  mode: queued

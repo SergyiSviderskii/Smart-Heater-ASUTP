@@ -1,0 +1,240 @@
+substitutions:
+  power: '"MINIMUM"'
+  
+  
+script:
+  - id: script_switching
+    mode: single # Железный режим без прерываний!
+    then:
+    
+      - script.stop: script_thermostat_heater_idle
+      
+      - lambda: 'id(boot_switching_finished) = false;'    
+          
+      - text_sensor.template.publish:
+          id: text_sensor_device_status
+          state: "🔀 Коммутация"  
+          
+      - switch.turn_on: switch_relay4 # Размыкаем силовой курок
+
+      - lambda: |-      
+          ESP_LOGE("main", "1 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+
+      - delay: 3000ms # Ждем гашения дуги контактов
+
+      - lambda: |-   
+
+          if (id(frh_mode) == "MINIMUM") {
+              id(switch_relay1).turn_on();
+              id(switch_relay2).turn_on();
+              id(switch_relay3).turn_on();
+              id(text_sensor_power_frh).publish_state("🔹 Минимум"); 
+          } 
+          else if (id(frh_mode) == "MEDIUM_MINUS") {
+              id(switch_relay1).turn_off();
+              id(switch_relay2).turn_on();
+              id(switch_relay3).turn_on();
+              id(text_sensor_power_frh).publish_state("👇 Средняя-минус");
+          } 
+          else if (id(frh_mode) == "MEDIUM_PLUS") {
+              id(switch_relay1).turn_off();
+              id(switch_relay2).turn_off();
+              id(switch_relay3).turn_on();
+              id(text_sensor_power_frh).publish_state("👆 Средняя-плюс");
+          } 
+          else if (id(frh_mode) == "MAXIMUM") {
+              id(switch_relay1).turn_off();
+              id(switch_relay2).turn_off();
+              id(switch_relay3).turn_off();
+              id(text_sensor_power_frh).publish_state("🔥 Максимум");
+          } 
+          else if (id(frh_mode) == "OFF") {
+              id(switch_relay1).turn_off();
+              id(switch_relay2).turn_off();
+              id(switch_relay3).turn_off();
+              id(text_sensor_power_frh).publish_state("❌ Отключено");             
+          }        
+          
+          ESP_LOGE("main", "2 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());          
+
+      - script.execute: script_delay_switching_on
+
+  - id: script_delay_switching_on
+    mode: single    
+    then:
+      - delay: 3000ms    
+      - if:
+          condition: 
+            - lambda: 'return id(binary_sensor_thermostat_connected).state;'
+          then:        
+            - if:
+                condition: 
+                  - binary_sensor.is_on: thermostat_heater_idle
+                then: 
+                  - if:
+                      condition: 
+                        lambda: 'return id(frh_mode) != "OFF";'
+                      then:                       
+                        - text_sensor.template.publish:
+                            id: text_sensor_device_status
+                            state: "📈 Набор Мощности⚡" 
+                        - switch.turn_off: switch_relay4                
+                        - if:
+                            condition: 
+                              - lambda: 'return id(frh_mode) == "MAXIMUM";'
+                            then:      
+                              - binary_sensor.template.publish:
+                                  id: thermostat_heater_idle
+                                  state: OFF  
+                            else:                              
+                              - script.execute: script_thermostat_heater_idle 
+                else: 
+                  - text_sensor.template.publish:
+                      id: text_sensor_device_status
+                      state: "⏳Ожидание💤"     
+          else:         
+            - text_sensor.template.publish:
+                id: text_sensor_device_status
+                state: "⚙️Автономный Нагрев🔥"
+            - switch.turn_off: switch_relay4  
+            - if:
+                condition: 
+                  - binary_sensor.is_on: thermostat_heater_idle
+                then:      
+                  - binary_sensor.template.publish:
+                      id: thermostat_heater_idle
+                      state: OFF  
+                      
+      - script.execute: script_boot_switching_finished             
+
+      - lambda: |-          
+          ESP_LOGE("main", "3 Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+          
+  - id: script_thermostat_heater_idle  
+    mode: single     
+    then:
+      - delay: 60000ms   
+      
+      - lambda: |- 
+          ESP_LOGE("main", "60000ms Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+
+      - lambda: |-  
+
+          if (id(frh_mode) == "MINIMUM") {
+            id(frh_mode) = "MEDIUM_MINUS";
+          } 
+          else if (id(frh_mode) == "MEDIUM_MINUS") {
+              id(frh_mode) = "MEDIUM_PLUS";
+          } 
+          else if (id(frh_mode) == "MEDIUM_PLUS") {
+              id(frh_mode) = "MAXIMUM";
+          } 
+          
+      - script.execute: script_switching 
+      
+
+binary_sensor:
+  # включение/выключение реле на устройстве 
+  - platform: gpio
+    pin:
+      number: $number_binary_sensor_1
+      mode:
+        input: true
+        pullup: true   
+      inverted: true  
+    id: relay_k1
+    filters:  
+      delayed_on_off: 300ms     
+    on_release:
+      then:
+        - if:
+            condition:
+              - lambda: 'return id(boot_switching_finished);'
+              - binary_sensor.is_on: binary_sensor_thermostat_connected
+            then:       
+              - lambda: 'id(frh_mode) = "MINIMUM";'
+              - script.execute: script_switching
+
+  - platform: gpio
+    pin: 
+      number: $number_binary_sensor_2
+      mode:
+        input: true
+        pullup: true   
+      inverted: true
+    id: relay_k2 
+    filters:  
+      delayed_on_off: 300ms    
+    on_release:
+      then:
+        - if:
+            condition:
+              - lambda: 'return id(boot_switching_finished);'
+              - binary_sensor.is_on: binary_sensor_thermostat_connected
+            then:       
+              - lambda: 'id(frh_mode) = "MEDIUM_MINUS";'
+              - script.execute: script_switching
+    
+  - platform: gpio
+    pin: 
+      number: $number_binary_sensor_3
+      mode:
+        input: true
+        pullup: true   
+      inverted: true
+    id: relay_k3 
+    filters:  
+      delayed_on_off: 300ms  
+    on_release:
+      then: 
+        - if:
+            condition:
+              - lambda: 'return id(boot_switching_finished);'
+              - binary_sensor.is_on: binary_sensor_thermostat_connected
+            then:       
+              - lambda: 'id(frh_mode) = "MEDIUM_PLUS";'
+              - script.execute: script_switching
+  
+  - platform: gpio
+    pin: 
+      number: $number_binary_sensor_4
+      mode:
+        input: true
+        pullup: true   
+      inverted: true
+    id: relay_k4
+    filters:  
+      delayed_on_off: 300ms    
+    on_release:
+      then:
+        - if:
+            condition:
+              - lambda: 'return id(boot_switching_finished);'
+              - binary_sensor.is_on: binary_sensor_thermostat_connected
+            then:       
+              - lambda: 'id(frh_mode) = "MAXIMUM";' 
+              - script.execute: script_switching
+              
+ 
+switch:
+  # индикация (LED) включения/выключение реле на устройстве       
+  - platform: gpio
+    id: switch_relay1
+    pin: $number_switch_1
+    restore_mode: ALWAYS_OFF    
+
+  - platform: gpio 
+    id: switch_relay2  
+    pin: $number_switch_2 
+    restore_mode: ALWAYS_OFF    
+
+  - platform: gpio
+    id: switch_relay3
+    pin: $number_switch_3 
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    id: switch_relay4
+    pin: $number_switch_4
+    restore_mode: ALWAYS_ON
+   

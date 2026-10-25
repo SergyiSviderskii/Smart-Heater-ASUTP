@@ -1,0 +1,244 @@
+substitutions:
+  friendly_name: "📊 ⚡Коммутатор ПЛЭН"
+  # Важнейший параметр! По умолчанию сущность света для HA создается:
+  internal_light_mode: false 
+  restore_from_flash: false   
+  logger_baud_rate: 115200  
+  reboot_timeout: "0s"
+
+
+packages:
+  - !include ../common/general/components.yaml
+  - !include ../common/general/only_time.yaml  
+  - !include ../common/general/status_led.yaml
+  
+  
+esphome:
+  name: $hostname
+  friendly_name: $friendly_name    
+  area: $installation_area 
+  on_boot:
+    priority: 600
+    then:   
+      - binary_sensor.template.publish:
+          id: flsg_heater_idle 
+          state: OFF      
+      - binary_sensor.template.publish:
+          id: binary_sensor_thermostat_connected 
+          state: OFF 
+      - binary_sensor.template.publish:
+          id: thermostat_heater_idle
+          state: OFF 
+      - binary_sensor.template.publish:
+          id: thermostat_connected
+          state: OFF 
+      - text_sensor.template.publish:
+          id: point_bssid
+          state: "Нет данных"   
+      - text_sensor.template.publish:
+          id: bssid_point
+          state: "Нет данных"     
+          
+      - script.execute: script_switching  
+
+
+# Enable Home Assistant API
+api:
+  #encryption:
+   # key: "$key_api" 
+  reboot_timeout: $reboot_timeout 
+  services:
+    - service: connected
+      variables:
+        my_connected: bool
+      then:
+        lambda: 'id(thermostat_connected).publish_state(my_connected);'   
+    - service: heater_idle
+      variables:
+        my_heater_idle: bool
+      then:
+        lambda: 'id(thermostat_heater_idle).publish_state(my_heater_idle);'    
+    
+    
+globals:
+  # Создаем глобальный флаг-замок
+  - id: boot_switching_finished
+    type: bool
+    restore_value: no
+    initial_value: "false" 
+
+  - id: frh_mode
+    type: std::string  
+    restore_value: no
+    initial_value: '"MAXIMUM"'
+    
+  - id: communication_stability
+    type: int 
+    restore_value: no
+    initial_value: '0'  
+
+
+script:
+  - id: script_boot_switching_finished 
+    mode: single  
+    then:
+      - if:
+          condition: 
+            binary_sensor.is_on: flsg_heater_idle
+          then: 
+            - if:
+                condition:
+                  binary_sensor.is_on: thermostat_heater_idle
+                then: 
+                  - delay: 1000ms
+                  - if:
+                      condition:
+                        binary_sensor.is_on: binary_sensor_thermostat_connected
+                      then:
+                        - lambda: 'id(frh_mode) = $power;' 
+                        - script.execute: script_switching
+                      else:
+                        script.execute: script_delay_switching_on
+                else:  
+                  - binary_sensor.template.publish:
+                      id: binary_sensor_thermostat_connected 
+                      state: OFF                   
+                  - if:
+                      condition:
+                        lambda: 'return id(frh_mode) == "MAXIMUM";'
+                      then:
+                        script.execute: script_delay_switching_on                        
+                      else:       
+                        - lambda: 'id(frh_mode) = "MAXIMUM";' 
+                        - script.execute: script_switching  
+                        
+            - binary_sensor.template.publish:
+                id: flsg_heater_idle 
+                state: OFF   
+                
+      - lambda: 'id(boot_switching_finished) = true;'  
+
+  - id: script_thermostat_connected
+    mode: restart
+    then:
+      - delay: 10000ms  
+      
+      - lambda: |-         
+          ESP_LOGE("main", "1000ms Мощность ПЛЭН: %s  Статус Устройства: %s", id(text_sensor_power_frh).state.c_str(), id(text_sensor_device_status).state.c_str());      
+
+      - if:
+          condition:
+            lambda: 'return id(frh_mode) != "MAXIMUM";'
+          then:       
+            - lambda: 'id(frh_mode) = "MAXIMUM";' 
+            - script.execute: script_switching  
+      - binary_sensor.template.publish:
+          id: binary_sensor_thermostat_connected
+          state: OFF 
+
+
+binary_sensor:
+  - platform: template 
+    id: flsg_heater_idle              
+              
+  - platform: template 
+    id: thermostat_heater_idle
+    filters: 
+      delayed_on_off: 500ms
+    on_state: 
+      then:
+        - script.stop: script_thermostat_connected       
+        - if:
+            condition:
+              lambda: 'return id(boot_switching_finished);'
+            then:    
+              - if:
+                  condition:
+                    lambda: 'return x;'                 
+                  then:
+                    - delay: 1000ms                  
+                    - if:
+                        condition:
+                          binary_sensor.is_on: binary_sensor_thermostat_connected
+                        then:
+                          - lambda: 'id(frh_mode) = $power;'
+                          - script.execute: script_switching
+                        else:
+                          script.execute: script_delay_switching_on
+                  else:  
+                    - binary_sensor.template.publish:
+                        id: binary_sensor_thermostat_connected 
+                        state: OFF                   
+                    - if:
+                        condition:
+                          lambda: 'return id(frh_mode) == "MAXIMUM";'
+                        then:
+                          script.execute: script_delay_switching_on                        
+                        else:       
+                          - lambda: 'id(frh_mode) = "MAXIMUM";' 
+                          - script.execute: script_switching
+ 
+            else:  
+              binary_sensor.template.publish:
+                id: flsg_heater_idle 
+                state: ON    
+
+  - platform: template
+    id: thermostat_connected 
+    filters:  
+      delayed_on_off: 300ms
+    on_state: 
+      then:
+        - if:
+            condition:
+              lambda: 'return id(boot_switching_finished);'
+            then:       
+              - if:
+                  condition:  
+                    and:
+                      - binary_sensor.is_off: binary_sensor_thermostat_connected 
+                      - lambda: 'return id(communication_stability) == 5;'
+                  then:  
+                    binary_sensor.template.publish:
+                      id: binary_sensor_thermostat_connected
+                      state: ON 
+                  else:
+                    lambda: 'id(communication_stability) += 1;'
+              - if:
+                  condition:
+                    binary_sensor.is_off: thermostat_heater_idle
+                  then:  
+                    script.execute: script_thermostat_connected   
+
+  - platform: template 
+    id: binary_sensor_thermostat_connected
+    filters:   
+      delayed_on_off: 100ms
+    on_press:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_off: thermostat_heater_idle
+            then:       
+              - lambda: 'id(frh_mode) = "OFF";'
+              - script.execute: script_switching 
+    on_release:
+      then:
+        lambda: 'id(communication_stability) = 0;'  
+    
+    
+text_sensor:
+  - platform: template
+    name: "Status"
+    id: text_sensor_device_status
+    icon: mdi:heat-wave
+    update_interval: never
+    
+  - platform: template
+    name: "Power FRH"
+    id: text_sensor_power_frh
+    icon: mdi:lightning-bolt
+    update_interval: never    
+    
+    
+      

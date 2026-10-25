@@ -1,0 +1,70 @@
+type: vertical-stack
+cards:
+  - type: tile
+    entity: sensor.dom_kommutator_plen_esphome_version
+    vertical: true
+    color: accent
+    name: Коммутатор мощности отопления
+    features_position: bottom
+  - type: horizontal-stack
+    cards:
+      - show_name: false
+        show_icon: true
+        type: button
+        tap_action:
+          action: none
+        entity: sensor.dom_kommutator_plen_ssid
+        show_state: true
+        icon_height: 20px
+      - show_name: false
+        show_icon: true
+        type: button
+        tap_action:
+          action: none
+        entity: sensor.dom_kommutator_plen_access_point
+        show_state: true
+        icon_height: 20px
+      - show_name: false
+        show_icon: true
+        type: button
+        tap_action:
+          action: none
+        entity: sensor.dom_kommutator_plen_ip
+        show_state: true
+        icon_height: 20px
+  - type: horizontal-stack
+    cards:
+      - show_name: false
+        show_icon: true
+        type: button
+        tap_action:
+          action: none
+        entity: sensor.dom_kommutator_plen_time_work
+        show_state: true
+        icon_height: 20px
+        name: uptime
+      - show_name: false
+        show_icon: true
+        show_state: true
+        type: glance
+        entities:
+          - entity: sensor.dom_kommutator_plen_rssi
+        state_color: true
+  - type: horizontal-stack
+    cards:
+      - show_name: false
+        show_icon: true
+        type: button
+        tap_action:
+          action: none
+        entity: sensor.dom_kommutator_plen_power_frh
+        show_state: true
+        icon_height: 20px
+        name: uptime
+      - show_name: false
+        show_icon: true
+        show_state: true
+        type: glance
+        entities:
+          - entity: sensor.dom_kommutator_plen_status
+        state_color: true

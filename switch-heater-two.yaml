@@ -1,0 +1,10 @@
+# SWITCH SONOFF DUAL R2 V1.4 
+substitutions:
+  hostname: "switch-heater-two"
+  password_ota: ""
+  installation_area: "дом -"
+
+
+packages:  
+  - !include device/common/function/switch_heater/two/sonoff_dual_r2_v1_4-2x.yaml 
+  - !include device/switch_heater/general.yaml  

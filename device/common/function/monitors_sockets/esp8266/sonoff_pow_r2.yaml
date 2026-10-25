@@ -1,0 +1,167 @@
+substitutions:
+  friendly_name: "🔥 Монитор Отопления" 
+  esp8266_board: esp01_1m
+  logger_baud_rate: 0
+  
+  
+esphome:
+  name: $hostname
+  friendly_name: $friendly_name
+  area: $installation_area
+  on_boot:
+    priority: 600
+    then:
+      - binary_sensor.template.publish:
+          id: flag_script_start_relay_on
+          state: OFF     
+      - binary_sensor.template.publish: 
+          id: flag_current_max
+          state: OFF 
+      - script.execute: script_start_relay_on    
+      - text_sensor.template.publish:
+          id: point_bssid
+          state: "Нет данных"   
+      - text_sensor.template.publish:
+          id: bssid_point
+          state: "Нет данных"           
+
+
+uart:
+  rx_pin: RX
+  baud_rate: 4800 
+  parity: EVEN
+  
+    
+binary_sensor:
+  # button divice
+  - platform: gpio
+    id: button_divice
+    pin:
+      number: GPIO0
+      inverted: true
+      mode: INPUT_PULLUP
+    filters:
+      - delayed_on_off: 300ms      
+    on_release:
+      then:                  
+        - switch.toggle: relay    
+        
+
+switch: 
+  - platform: gpio
+    name: "ON-OFF"
+    id: relay
+    pin: GPIO12
+    icon: "mdi:toggle-switch-outline"
+    restore_mode: ALWAYS_OFF    
+    on_turn_on:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_off: flag_script_start_relay_on  
+            then: 
+              - script.execute:
+                  id: script_timer_off
+                  delay_ms: 100             
+            else:             
+              - if:
+                  condition:
+                    - binary_sensor.is_off: flag_current_max  
+                  then:                   
+                    - script.execute: script_power
+                    - script.execute:
+                        id: service_ha
+                        title_data: $friendly_name
+                        message_data: |  
+                          🏙 Зона: $installation_area
+                          🟢 Статус: Включен                
+                  else:    
+                    - script.execute: script_alarm_current_max                  
+    on_turn_off:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: flag_script_start_relay_on
+            then:             
+              - script.execute:
+                  id: service_ha
+                  title_data: $friendly_name 
+                  message_data: |  
+                    🏙 Зона: $installation_area
+                    🔴 Статус: Выключен 
+              - script.execute: script_power   
+        
+        
+sensor:
+  - platform: cse7766
+    current:
+      name: "Current"
+      id: current
+      device_class: current
+      unit_of_measurement: A    
+      state_class: measurement
+      accuracy_decimals: 2
+      filters:
+        - throttle_average: ${update_interval}   
+      on_value:   
+        then:
+          - if:  
+              condition:
+                - switch.is_on: relay          
+              then:         
+                # =========================================================================
+                #  КОНТРОЛЬ ПРЕВЫШЕНИЯ ТОКА (ЗАЩИТА ОСТАЕТСЯ И РАБОТАЕТ ВСЕГДА!)
+                # =========================================================================
+                - if:
+                    condition:               
+                      - lambda: 'return !std::isnan(x) && x >= $current_max;'                       
+                    then:   
+                      - if:
+                          condition:
+                            - not:
+                                - script.is_running: script_delay_current_max 
+                            - binary_sensor.is_off: flag_current_max
+                          then:  
+                            # Запускаем таймер проверки. Если ток высокий 3 секунды — рубим реле.
+                            - script.execute: script_delay_current_max
+                    else: 
+                      - if:
+                          condition:
+                            - script.is_running: script_delay_current_max
+                          then:
+                            - script.stop: script_delay_current_max             
+    voltage:
+      name: "Voltage"
+      id: voltage
+      device_class: voltage
+      unit_of_measurement: V
+      state_class: measurement 
+      accuracy_decimals: 2
+      filters:
+        - throttle_average: ${update_interval}             
+    power:
+      name: "Power"
+      id: power
+      device_class: power
+      unit_of_measurement: W
+      state_class: measurement 
+      accuracy_decimals: 2 
+      filters:
+        - throttle_average: ${update_interval}   
+    energy:
+      name: "Energy"
+      id: energy
+      device_class: energy
+      state_class: total_increasing
+      unit_of_measurement: Wh 
+      accuracy_decimals: 2      
+      filters:
+        - throttle_average: ${update_interval}     
+    apparent_power:
+      name: "Apparent power"
+      device_class: apparent_power
+      unit_of_measurement: VA  
+      state_class: measurement
+      accuracy_decimals: 2  
+      filters:
+        - throttle_average: ${update_interval}         

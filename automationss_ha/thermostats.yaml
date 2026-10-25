@@ -1,0 +1,477 @@
+- id: ''
+  alias: Управление отоплением (дом - термостаты)
+  description: Жесткое удержание выключенного состояния в переходный период. Календарные окна + температура.
+
+  triggers:
+    # 1. Изменение зоны присутствия жильцов
+    - trigger: state
+      entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia
+      to:
+        - "on"
+        - "off"
+
+    # 2. ОСНОВНЫЕ триггеры переключения сезонов — по недельной температуре
+    
+    # ЛЕТО
+    - trigger: numeric_state
+      entity_id: sensor.sredniaia_temperatura_za_nedeliu
+      above: 20
+      for:
+        hours: 6
+      id: leto_po_nedele
+      
+    - trigger: numeric_state
+      entity_id: sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi
+      above: 23
+      for: { hours: 6 }
+      id: leto_po_nedele        
+      
+    # ЗИМА 
+    - trigger: numeric_state
+      entity_id: sensor.sredniaia_temperatura_za_nedeliu
+      below: 10
+      for:
+        hours: 6      
+      id: zima_po_nedele
+      
+    - trigger: numeric_state
+      entity_id: sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi
+      below: 17
+      for: { hours: 6 }
+      id: zima_po_nedele   
+      
+    # Аварийное Лето: Улица лежит 3 часа И в доме жарко
+    - trigger: template
+      id: leto_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.home_assistant_temperature', 'unavailable') or 
+            is_state('sensor.home_assistant_temperature', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dome_termostat') | float(0) > 25 }}
+      for:
+        hours: 6
+
+    - trigger: template
+      id: leto_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unavailable') or 
+            is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dom_neotaplivaemye_pomeshcheniia_xiaomi') | float(0) > 18 }}
+      for:
+        hours: 6  
+    # Аварийное Лето: Улица лежит 6 часов И в доме жарко
+    - trigger: template
+      id: leto_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.home_assistant_temperature', 'unavailable') or 
+            is_state('sensor.home_assistant_temperature', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dome_termostat') | float(0) > 25 }}
+      for:
+        hours: 6
+
+    - trigger: template
+      id: leto_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unavailable') or 
+            is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dom_neotaplivaemye_pomeshcheniia_xiaomi') | float(0) > 18 }}
+      for:
+        hours: 6  
+
+    # Аварийная Зима: Улица лежит 1 час И в доме холодно (Максимальная защита логов)
+    - trigger: template
+      id: zima_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.home_assistant_temperature', 'unavailable') or 
+            is_state('sensor.home_assistant_temperature', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dome_termostat') | float(99) < 14 }}
+      for:
+        hours: 1
+
+    - trigger: template
+      id: zima_po_domu_avariia
+      value_template: >-
+        {{ (is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unavailable') or 
+            is_state('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi', 'unknown')) and 
+          states('sensor.sredniaia_temperatura_v_dom_neotaplivaemye_pomeshcheniia_xiaomi') | float(99) < 10 }}
+      for:
+        hours: 1
+      
+    # 4. Суточная проверка состояния (04:00)
+    - trigger: time
+      at: "04:00"
+      id: sutochnaia_proverka
+
+    # 5. Суточный отчёт суточная проверки состояния (04:00)      
+    - trigger: time
+      at: "09:00"
+      id: utrenniy_otchet        
+
+    # 6. Восстановление термостатов в сети
+    - trigger: state
+      entity_id:
+        - switch.dom_vannaia_termostat_on_off
+        - switch.dom_spalnia_termostat_on_off
+        - switch.dom_koridor_termostat_on_off
+        - switch.dom_zal_termostat_on_off
+        - switch.dom_kukhnia_termostat_on_off
+        - switch.dom_gostinaia_termostat_on_off
+      from:
+        - unavailable
+        - unknown
+      for:
+        seconds: 5     
+
+  conditions: []
+
+  actions: 
+    - if:
+        - condition: trigger
+          id: utrenniy_otchet  
+      then:
+        # Проверяет в 09:00, изменился ли сезон ночью, и присылает уведомление
+        - if:
+            # Шлем отчет только в том случае, если флаг ночного переключения включен
+            - condition: state
+              entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona
+              state: 'on'
+          then:
+            - action: script.notify_message
+              data:
+                title: >-
+                  {{ '❄️ Отопление: включен режим Зима' if is_state('input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon', 'on') else '☀️ Отопление: включен режим Лето' }}
+                message: |
+                  🏡 Во время ночной проверки в 04:00 был изменен статус отопительного сезона.
+                
+                  Текущий статус: {{ 'АКТИВЕН (ЗИМА) 🔥' if is_state('input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon', 'on') else 'ВЫКЛЮЧЕН (ЛЕТО) ☀️' }}
+                  Жильцы: {{ 'Дома 🏡' if is_state('input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia', 'on') else 'Уехали 🚗' }}
+                
+                  🌡️ Улица (прогноз): {{ states('sensor.sredniaia_temperatura_za_nedeliu') }}°C
+                  🌡️ В доме (Xiaomi): {{ states('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi') }}°C
+                  🌡 В пристройках (Xiaomi): {{ states('sensor.sredniaia_temperatura_v_dom_neotaplivaemye_pomeshcheniia_xiaomi') }}°C
+                  
+                  📅 Календарный месяц: {% set months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'] %}{{ months[now().month - 1] }} 
+            
+            # Сбрасываем внешний флаг-помощник до следующей ночи
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona  
+
+          else: []                
+                
+      else:            
+        # ==================================================================
+        # ШАГ 1: АВТОМАТИЧЕСКОЕ ПЕРЕКЛЮЧЕНИЕ ТУМБЛЕРА СЕЗОНА
+        # ==================================================================
+        - choose:
+            # --- ЛЕТО: по недельному сенсору (основной, только май–сен) ---
+            - conditions:
+                - condition: trigger
+                  id: leto_po_nedele
+                - condition: template
+                  value_template: >-
+                    {% set m = now().month %}
+                    {{ m >= 5 and m <= 9 }}
+              sequence:
+                - action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                - action: input_boolean.turn_on
+                  target:
+                     entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona                    
+                - action: script.notify_message
+                  data:
+                    title: "☀️ Отопление: режим Лето"
+                    message: |
+                      🏡☀️ Отопительный сезон официально закрыт.
+                      📈🌡️ Причина: средняя температура за неделю поднялась выше пороговой.
+                      🏖️🔌 Все термостаты переведены в режим Holiday и обесточены.
+                 
+                      
+            # --- ЛЕТО: аварийная страховка по дому (метеостанция зависла >2ч + в доме жарко) ---
+            - conditions:
+                - condition: trigger
+                  id: leto_po_domu_avariia
+              sequence:
+                - action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                - action: input_boolean.turn_on
+                  target:
+                     entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona                    
+                - action: script.notify_message
+                  data:
+                    title: "⚠️ Отопление: режим Лето (АВАРИЯ)"
+                    message: |
+                      📡❌ Метеостанция зависла! Сработал аварийный алгоритм.
+                      🏠🌡 Причина: температура в доме поднялась выше 25°C при отсутствии обновлений с улицы.
+                      🔌🛑 Отопление принудительно отключено, термостаты обесточены.
+                     
+    
+            # --- ЗИМА: по недельному сенсору (основной, только окт–апр) ---
+            - conditions:
+                - condition: trigger
+                  id: zima_po_nedele
+                - condition: template
+                  value_template: >-
+                    {% set m = now().month %}
+                    {{ m >= 10 or m <= 4 }}
+              sequence:
+                - action: input_boolean.turn_on
+                  target:
+                    entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                - action: input_boolean.turn_on
+                  target:
+                     entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona                      
+                - action: script.notify_message
+                  data:
+                    title: "❄️ Отопление: режим Зима"
+                    message: |
+                      🏡❄️ Отопительный сезон официально открыт.
+                      📉🌡️ Причина: средняя температура за неделю упала ниже пороговой.
+                      🔥🔌 Термостаты успешно запущены в работу и переведены на расписание.
+
+    
+            # --- ЗИМА: аварийная страховка по дому (метеостанция зависла >2ч + дом остыл) ---
+            - conditions:
+                - condition: trigger
+                  id: zima_po_domu_avariia
+              sequence:
+                - action: input_boolean.turn_on
+                  target:
+                    entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                - action: input_boolean.turn_on
+                  target:
+                     entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona                      
+                - action: script.notify_message
+                  data:
+                    title: "⚠️ Отопление: режим Зима (АВАРИЯ)"
+                    message: |
+                      📡❌ Метеостанция зависла! Сработал аварийный алгоритм.
+                      🏠❄️ Причина: зафиксировано опасное падение температуры в здании при отсутствии обновлений с улицы.
+                      🔌🔥 Отопление принудительно включено для защиты дома от промерзания!
+                      
+            # --- СУТОЧНАЯ ПРОВЕРКА (04:00): тихий перерасчет ---
+            - conditions:
+                - condition: trigger
+                  id: sutochnaia_proverka
+              sequence:
+                  
+                - if:
+                    # --- ЛЕТО: по недельному сенсору (основной, только май–сен) -                
+                    - condition: template
+                      value_template: >-
+                        {{ states('sensor.sredniaia_temperatura_za_nedeliu') | float(-99) > 20 or
+                          states('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi') | float(-99) > 23}}
+                    - condition: template
+                      value_template: >-
+                        {% set m = now().month %}
+                        {{ m >= 5 and m <= 9 }} 
+                    - condition: state
+                      entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                      state: 'on'                    
+                  then:
+                    - action: input_boolean.turn_off
+                      target:
+                        entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                    # Изменение произошло — взводим наш внешний флаг-помощник                        
+                    - action: input_boolean.turn_on
+                      target:
+                        entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona 
+                  else: []
+                
+                - if:
+                    # --- ЗИМА: по недельному сенсору (основной, только окт–апр) --                
+                    - condition: template
+                      value_template: >-
+                        {{ states('sensor.sredniaia_temperatura_za_nedeliu') | float(99) < 8 or
+                          states('sensor.sredniaia_temperatura_v_dom_otaplivaemye_pomeshcheniia_xiaomi') | float(99) < 17 }}
+                    - condition: template
+                      value_template: >-
+                        {% set m = now().month %}
+                        {{ m >= 10 or m <= 4 }} 
+                    - condition: state
+                      entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                      state: 'off'                     
+                  then:
+                    - action: input_boolean.turn_on
+                      target:
+                        entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon    
+                    # Изменение произошло — взводим наш внешний флаг-помощник                        
+                    - action: input_boolean.turn_on
+                      target:
+                        entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_bylo_nochnoe_pereopredeleniia_sezona
+                  else: []
+                
+        # Небольшая задержка, чтобы стейт тумблера зафиксировался в базе данных
+        - delay: "00:00:01"
+    
+        # ==================================================================
+        # ШАГ 2: УПРАВЛЕНИЕ ТЕРМОСТАТАМИ (С ЗАЩИТОЙ ОТ СПАМА В ЭФИР И ОТ СБОЕВ СЕТИ)
+        # ==================================================================
+        - choose:
+            # ==========================================================
+            # НАСТОЯЩИЙ РЕЖИМ «ЗИМА»: Отопление должно работать
+            # ==========================================================
+            - conditions:
+                - condition: state
+                  entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                  state: 'on'            
+              sequence:
+                - repeat:
+                    for_each:
+                      - vannaia
+                      - spalnia
+                      - koridor
+                      - zal
+                      - kukhnia
+                      - gostinaia
+                    sequence:
+                      # ==================================================================
+                      # ГЛАВНЫЙ БАРЬЕР СВЯЗИ: Если устройство мёртвое — сразу пропускаем его
+                      # ==================================================================
+                      - if:
+                          - condition: template
+                            value_template: "{{ states('switch.dom_' ~ repeat.item ~ '_termostat_on_off') in ['unavailable', 'unknown'] }}"
+                        then: [] # Мгновенный выход для этого объекта, идем к следующему
+
+                        else:
+                          # 1. Если термостат выключен физически — сначала включаем его
+                          - if:
+                              - condition: template
+                                value_template: "{{ is_state('switch.dom_' ~ repeat.item ~ '_termostat_on_off', 'off') }}"
+                            then:
+                              - action: switch.turn_on
+                                target:
+                                  entity_id: "switch.dom_{{ repeat.item }}_termostat_on_off"
+                                  
+                              - delay: "00:00:01"
+                              
+                            else: [] # Для красивой трассировки в интерфейсе HA  
+
+                          # 2. замок должен быть всегда снят для ручного контроля
+                          - if:
+                              - condition: template
+                                value_template: "{{ is_state('switch.dom_' ~ repeat.item ~ '_termostat_lock', 'on') }}"
+                            then:
+                              - action: switch.turn_off
+                                target:
+                                  entity_id: "switch.dom_{{ repeat.item }}_termostat_lock"
+                                  
+                              - delay: "00:00:01"
+                            
+                            else: [] # Для красивой трассировки в интерфейсе HA    
+
+                          # 3. УПРАВЛЕНИЕ РЕЖИМАМИ (С защитой Manual и TempProg, когда мы дома)
+                          - sequence:
+                              - variables:
+                                  is_home: "{{ is_state('input_boolean.vspomogatelnyi_avtomatizatsii_voshli_vyshli_v_zonu_upravleniia_otopleniia', 'on') }}"
+                                  current_mode: "{{ states('select.dom_' ~ repeat.item ~ '_termostat_mode') }}"
+                                  target_mode: "{{ 'Program' if is_home else 'Holiday' }}"
+                              
+                              - if:
+                                  - condition: template
+                                    value_template: >-
+                                      {% if is_home and current_mode in ['Manual', 'TempProg'] %}
+                                        false
+                                      {% else %}
+                                        {{ current_mode != target_mode }}
+                                      {% endif %}
+                                then:
+                                  - action: select.select_option
+                                    target:
+                                      entity_id: "select.dom_{{ repeat.item }}_termostat_mode"
+                                    data:
+                                      option: "{{ target_mode }}"
+                                      
+                                  - delay: "00:00:01"
+                                  
+                                else: [] # Для красивой трассировки в интерфейсе HA
+                            
+
+                        
+            # ==========================================================
+            # НАСТОЯЩИЙ РЕЖИМ «ЛЕТО»: Всё должно быть гарантированно отключено
+            # ==========================================================
+            - conditions:
+                - condition: state
+                  entity_id: input_boolean.vspomogatelnyi_avtomatizatsii_otopleniia_sezon
+                  state: 'off'
+              sequence:
+                - repeat:
+                    for_each:
+                      - vannaia
+                      - spalnia
+                      - koridor
+                      - zal
+                      - kukhnia
+                      - gostinaia
+                    sequence:
+                      # Пропускаем устройство, если оно полностью мёртвое (unavailable / unknown)
+                      - if:
+                          - condition: template
+                            value_template: "{{ states('switch.dom_' ~ repeat.item ~ '_termostat_on_off') in ['unavailable', 'unknown'] }}"
+                        then: [] # Мгновенный выход для этого устройства, идём к следующему.
+
+                        else:
+                          # ШАГ 1: Проверяем режим. Если он ЕЩЁ НЕ Holiday — запускаем цепочку перевода
+                          - if:
+                              - condition: template
+                                value_template: "{{ states('select.dom_' ~ repeat.item ~ '_termostat_mode') != 'Holiday' }}"
+                            then:
+                              # А: Если при этом экран прибора был выключен — будим плату, чтобы она приняла команду режима
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ is_state('switch.dom_' ~ repeat.item ~ '_termostat_on_off', 'off') }}"
+                                then:      
+                                  - action: switch.turn_on
+                                    target:
+                                      entity_id: "switch.dom_{{ repeat.item }}_termostat_on_off"
+                                      
+                                  - delay: "00:00:01" 
+                                
+                                else: [] # Для красивой трассировки в интерфейсе HA      
+
+                              # Б: Проверяем и снимаем замок кнопок (иначе режим не поменяется)
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ is_state('switch.dom_' ~ repeat.item ~ '_termostat_lock', 'on') }}"
+                                then:
+                                  - action: switch.turn_off
+                                    target:
+                                      entity_id: "switch.dom_{{ repeat.item }}_termostat_lock"
+                                  - delay: "00:00:01" 
+                                  
+                                else: [] # Для красивой трассировки в интерфейсе HA      
+
+                              # В: Переводим устройство в безопасный режим Holiday
+                              - action: select.select_option
+                                target:
+                                  entity_id: "select.dom_{{ repeat.item }}_termostat_mode"
+                                data:
+                                  option: 'Holiday'
+                                  
+                              - delay: "00:00:01"
+                              
+                            else: [] # Для красивой трассировки в интерфейсе HA  
+
+                          # ШАГ 2: Финальный рубеж экономии. Если режим УЖЕ Holiday, но экран всё ещё ON — гасим его в OFF
+                          - if:
+                              - condition: template
+                                value_template: "{{ is_state('select.dom_' ~ repeat.item ~ '_termostat_mode', 'Holiday') }}"
+                              - condition: template
+                                value_template: "{{ is_state('switch.dom_' ~ repeat.item ~ '_termostat_on_off', 'on') }}"
+                            then:
+                              - action: switch.turn_off
+                                target:
+                                  entity_id: "switch.dom_{{ repeat.item }}_termostat_on_off"
+                              - delay: "00:00:01"
+                              
+                            else: [] # Для красивой трассировки в интерфейсе HA  
+                            
+
+  mode: queued
+  max: 25
+  
+
+
+
