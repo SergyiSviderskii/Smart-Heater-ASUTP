@@ -2,19 +2,33 @@
 
 ### Autonomous Electric Heating System with Dynamic Power Management & Monitoring
 
-An autonomous, distributed industrial-grade control system (ICS/ASUTP) for residential electric heating based on **ZEBRA PRO EVO300** heating elements. The project seamlessly integrates a robust hardware relay automation board, custom microcontroller firmware, and intelligent software logic to deliver maximum energy efficiency, fail-safe operation, and hardware redundancy.
+An autonomous, distributed industrial-grade control system (ICS/ASUTP) for residential electric heating based on **ZEBRA PRO EVO300** heating elements.
 
+## 🧠 Core Operation & Advanced Control Algorithm
+
+The system relies on "Advance Predictive Shifting" and "Zero-Current Commutation" to prevent contact arcing and extend relay lifespans. It features a 3-stage protection architecture to handle inrush currents and link losses:
+1. **Stage 1 (Predictive Intercept):** Prepares the circuit into a safe low-power state before the thermostat triggers.
+2. **Stage 2 (Fail-Safe under Link Loss):** Manages timeouts and fallback states if network connection drops.
+3. **Stage 3 (Zero-Current Commutation):** Executes step-by-step arc-free power adjustments with full local edge autonomy.
+
+## 📐 Electrical Wiring & Topology Blueprints
+
+The wiring topology prevents short circuits during dynamic series/parallel shifting for eco or rapid heating modes. You can find the full documentation and details in the referenced web document.
+
+## 🔩 Hardware Specifications & Module Configuration
+
+The entirely stationary control grid consists of heavy-duty relay commutator modules, local thermostats, and tracking independent loops.
+- **Commutator (4CH Block):** Sonoff 4CH Pro R3 or Tuya WR3 boards with NT90TPNCE220CB (30/40A) relays in a COM-NO-NC cascade array for topology switching.
+- **Climate Controller:** Tuya v1 Thermostats linked directly via custom low-level `tuya_uart` ESPHome components.
+- **Monitoring & Safety Loops:** Sonoff Dual R2 / Pow2 units running independent current sensing loops for continuous logging.
+
+## 🚀 Home Assistant Automation & Network Optimization
+
+All routines feature gradual post-boot power ramp-up and strict entity availability tracking to maintain error-free system logs.
+- **Anti-Hang Protection:** Automation enforces a hard 30-minute maximum runtime limit for continuous heating.
+- **Network Optimization:** Unified static IP allocation. ESP8266 units utilize mDNS hostnames (`.local`), whereas BK7231N (LibreTiny) devices communicate exclusively through direct broker IP mapping to eliminate DNS resolution latency within the 4–5 second wake window.
+- **Windows Integration:** LAN workstation configuration adjustments (`AllowInsecureGuestAuth = 1`) prevent explorer freezes inside the industrial control subnet.
 ---
-
-## 🛠️ Key System Features
-
-*   **Dynamic Topology Shifting (Series ⇄ Parallel):** A hardware relay bridge dynamically toggles the heating element circuits between two states: an eco/soft mode (series connection) for low-power temperature maintenance and a forced/rapid mode (parallel connection) for quick room warm-up.
-*   **Tuya Thermostat v1 Integration:** Room climate control is tied to **Tuya Thermostats version 1 (v1)**. High-speed physical data exchange with ESPHome runs over a low-level, local `tuya_uart` component (completely bypassing v3 modifications), ensuring instant responsiveness without any cloud dependency.
-*   **Gradual Power Ramp-up:** A step-by-step sequential activation of executive systems (Heating ➔ Water Valves ➔ Sockets ➔ Lighting) utilizing precise time delays after a Home Assistant server boot. This eliminates dangerous inrush currents, power grid surges, and high CPU spikes.
-*   **Edge Autonomy (ESPHome):** Internal firmware logic running on ESP8266 modules handles local timeouts and processes physical buttons or thermostats independently, ensuring the heating system remains functional even during a total loss of connection to the Home Assistant server.
-
----
-
 
 ### Terminology (Project-Specific)
 *   **"Cold State"**: All power relays on the switcher are OFF, the circuit is open, and there is no load on the heaters.
@@ -118,3 +132,7 @@ Communication between the **Thermostat** and the **4CH Commutator** is handled d
 *   **Firmware Updates:** Once connected to the local network, all future configuration adjustments and firmware upgrades are performed wirelessly over-the-air (**OTA** via the ESPHome Native API).
 *   **Security & Secrets:** All sensitive variables, such as Wi-Fi credentials, AP BSSIDs, and OTA passwords, are isolated inside the `secrets.yaml` file and safely ignored by Git version tracking using `.gitignore` rules.
 *   **System Environment (Windows Network Bridge):** To ensure reliable access to network shares and ASUTP logs from engineering workstations running Windows, a baseline fix is applied: unauthenticated guest access is enabled via registry (`LanmanWorkstation\AllowInsecureGuestAuth = 1`) combined with an automatic File Explorer cache flush to eliminate network folder freezing within the local automation subnet.
+
+---
+💡 **Note:** You can find the complete interactive wiring diagram in the root folder as `wiring diagrams.html`. Simply download and open it in any web browser to view the full schematic.
+
