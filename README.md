@@ -15,6 +15,50 @@ An autonomous, distributed industrial-grade control system (ICS/ASUTP) for resid
 
 ---
 
+
+### Terminology (Project-Specific)
+*   **"Cold State"**: All power relays on the switcher are OFF, the circuit is open, and there is no load on the heaters.
+*   **"Relay Pre-Pull"**: The switcher mechanically closes one relay, but **no current flows** to the heaters (the main circuit remains intentionally open). This is a topology preparation step.
+*   **"Heartbeat / Pulses"**: One‑second impulses sent by the thermostat. This is a “get ready” signal, not a heating command.
+*   **"Trigger Point"**: Thermostat hysteresis activation (temperature drops below the threshold). This is the real heating start command.
+*   **"Topology Commutation"**: Switching the heater connection scheme (series ⇄ parallel) via relay closure/opening. Must be completed **before** power is applied.
+
+---
+
+## Main Operation Algorithm (Normal Mode)
+
+1.  **Idle Mode.**
+    *   Temperature is within the hysteresis band (e.g., 19–21°C for a 20°C target).
+    *   Thermostat is silent.
+    *   Switcher holds all relays in the **"cold state"**. Circuit is open. No heating occurs.
+
+2.  **Preparation Phase (“Heartbeat”, ~0.5°C before threshold).**
+    *   As temperature approaches the lower hysteresis limit, the thermostat sends short **one‑second pulses**.
+    *   The switcher detects the pulses and performs a **"pre‑pull of the first relay"**.
+    *   **Critical:** At this stage, **no current is supplied** to the heaters. The circuit remains intentionally open. Purpose: prepare the topology, avoid inrush current and transients.
+
+3.  **Trigger Point (Heating Start).**
+    *   Temperature drops below the hysteresis threshold. Thermostat issues the start command.
+    *   Switcher executes **topology commutation** (switches the heater connection scheme).
+    *   Only after commutation is complete does the **"pre‑pulled" relay** close to allow power flow.
+    *   A gradual power ramp‑up algorithm starts: every ~1 minute, the next stage (relay) is added until target power is reached.
+
+---
+
+## Link Loss Scenarios & Fail‑Safe
+
+Switcher behavior depends on the phase when the link to the thermostat is lost.
+
+| Phase When Link Is Lost | Switcher Action | Purpose |
+| --- | --- | --- |
+| **During Preparation Phase**<br>(pulses present, no start command yet) | Switcher **automatically releases** the "pre‑pulled" relay via internal logic. | Prevent uncontrolled heating. Circuit remains open. |
+| **After Trigger Point Activation**<br>(gradual ramp‑up already started) | **No link required.** Switcher completes the ramp‑up procedure autonomously. | Guaranteed transition to operating mode even without communication. |
+| **Complete Link Loss**<br>(thermostat not involved) | Thermostat operates autonomously by hysteresis. On trigger activation, heating runs **without gradual start** (direct full power). | Priority: prevent freezing. Smoothness is sacrificed to keep the space heated. |
+
+---
+
+
+
 ## 📂 Repository Structure
 
 The project follows a clean, modular structure matching your deployment files:
